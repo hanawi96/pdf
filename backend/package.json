@@ -1,0 +1,13 @@
+{
+	"name": "so-qpdf",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "node server.js",
+		"test": "node --test lib/plan.test.js"
+	},
+	"dependencies": {
+		"busboy": "^1.6.0",
+		"fflate": "^0.8.2"
+	}
+}
