@@ -669,47 +669,14 @@
 					{/if}
 
 					{#if tool.id === 'merge'}
-						<div class="flex items-baseline justify-between gap-3">
-							<h2 class="text-sm font-semibold tracking-tight">Thứ tự ghép</h2>
-							<p class="text-xs text-muted-foreground">{files.length} tệp</p>
-						</div>
 						<MergeFileList
 							{files}
+							accept={tool.accept}
 							busy={stage === 'processing'}
+							onadd={(list) => void addFiles(list)}
 							onreorder={(from, to) => applyOrder(from, to, true)}
 							onremove={removeFile}
 							onunlock={unlockFile}
-						/>
-						<div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-							<Button
-								class="w-full sm:w-auto"
-								variant="outline"
-								type="button"
-								disabled={stage === 'processing'}
-								onclick={() => document.getElementById('more-files')?.click()}
-							>
-								Thêm tệp
-							</Button>
-							<Button
-								class="w-full sm:w-auto"
-								variant="ghost"
-								type="button"
-								disabled={orderHistory.length === 0 || stage === 'processing'}
-								onclick={undoOrder}
-							>
-								Hoàn tác
-							</Button>
-						</div>
-						<input
-							id="more-files"
-							class="sr-only"
-							type="file"
-							accept={tool.accept}
-							multiple={tool.multiple}
-							onchange={(event) => {
-								void addFiles([...(event.currentTarget.files ?? [])]);
-								event.currentTarget.value = '';
-							}}
 						/>
 					{:else if tool.multiple}
 						<ul class="space-y-2">

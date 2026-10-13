@@ -64,7 +64,7 @@
 	});
 </script>
 
-<div bind:this={node} class="relative size-12 shrink-0 overflow-hidden rounded-md bg-muted sm:size-14">
+<div bind:this={node} class="relative size-full overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-black/10">
 	{#if url}
 		<img src={url} alt="" class="size-full object-contain" decoding="async" draggable="false" />
 	{/if}
