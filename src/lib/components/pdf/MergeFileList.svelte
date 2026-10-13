@@ -3,7 +3,6 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import X from '@lucide/svelte/icons/x';
-	import { onDestroy } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -25,164 +24,71 @@
 		onunlock: (id: string) => void;
 	} = $props();
 
-	let listEl = $state<HTMLUListElement | null>(null);
-	let dragging = $state(false);
+	let draggedId = $state<string | null>(null);
+	let targetId = $state<string | null>(null);
 
-	type Drag = {
-		from: number;
-		to: number;
-		pointerId: number;
-		heights: number[];
-		gap: number;
-		originY: number;
-		scrollY: number;
-	};
-
-	let drag: Drag | null = null;
-	let pointerY = 0;
-	let frame = 0;
-	let previousUserSelect = '';
-	let previousCursor = '';
-
-	function topsOf(heights: number[], gap: number) {
-		const tops: number[] = [];
-		let y = 0;
-		for (const height of heights) {
-			tops.push(y);
-			y += height + gap;
-		}
-		return tops;
+	function canDrag() {
+		return !busy && files.length > 1;
 	}
 
-	function targetIndex(from: number, dy: number, heights: number[], gap: number) {
-		const tops = topsOf(heights, gap);
-		const center = tops[from] + dy + heights[from] / 2;
-		let to = from;
-		for (let index = 0; index < heights.length; index += 1) {
-			if (index === from) continue;
-			const mid = tops[index] + heights[index] / 2;
-			if (index > from && center > mid) to = index;
-			if (index < from && center < mid) to = Math.min(to, index);
-		}
-		return to;
+	function isControl(event: DragEvent) {
+		const origin = event.target;
+		return origin instanceof Element && Boolean(origin.closest('button, input, textarea, label, a'));
 	}
 
-	function rows() {
-		return listEl ? ([...listEl.children] as HTMLElement[]) : [];
-	}
-
-	function paint(dy: number) {
-		if (!drag) return;
-		const next = targetIndex(drag.from, dy, drag.heights, drag.gap);
-		drag.to = next;
-		const current = topsOf(drag.heights, drag.gap);
-		const order = drag.heights.map((_, index) => index);
-		const [moved] = order.splice(drag.from, 1);
-		order.splice(next, 0, moved);
-		const placed = new Array<number>(order.length);
-		let y = 0;
-		for (const index of order) {
-			placed[index] = y;
-			y += drag.heights[index] + drag.gap;
+	function onDragStart(event: DragEvent, id: string) {
+		if (!canDrag() || isControl(event)) {
+			event.preventDefault();
+			return;
 		}
-		for (const [index, row] of rows().entries()) {
-			const delta = index === drag.from ? dy : placed[index] - current[index];
-			row.style.transform = delta ? `translate3d(0, ${delta}px, 0)` : '';
-			row.style.zIndex = index === drag.from ? '2' : '';
+		draggedId = id;
+		if (event.dataTransfer) {
+			event.dataTransfer.effectAllowed = 'move';
+			event.dataTransfer.setData('text/plain', id);
 		}
 	}
 
-	function tick() {
-		if (!drag) return;
-		const dy = pointerY - drag.originY + (window.scrollY - drag.scrollY);
-		paint(dy);
-		if (pointerY < 72) window.scrollBy(0, -10);
-		else if (pointerY > window.innerHeight - 72) window.scrollBy(0, 10);
-		frame = requestAnimationFrame(tick);
-	}
-
-	function clearStyles() {
-		for (const row of rows()) {
-			row.style.transform = '';
-			row.style.zIndex = '';
-		}
-	}
-
-	function startDrag(event: PointerEvent, index: number) {
-		if (busy || event.button !== 0 || files.length < 2 || !listEl) return;
-		const elements = rows();
-		if (elements.length !== files.length) return;
+	function onDragOver(event: DragEvent, id: string) {
+		if (!draggedId) return;
 		event.preventDefault();
-		const rects = elements.map((row) => row.getBoundingClientRect());
-		drag = {
-			from: index,
-			to: index,
-			pointerId: event.pointerId,
-			heights: rects.map((rect) => rect.height),
-			gap: rects.length > 1 ? Math.max(0, rects[1].top - rects[0].bottom) : 8,
-			originY: event.clientY,
-			scrollY: window.scrollY
-		};
-		pointerY = event.clientY;
-		dragging = true;
-		previousUserSelect = document.body.style.userSelect;
-		previousCursor = document.body.style.cursor;
-		document.body.style.userSelect = 'none';
-		document.body.style.cursor = 'grabbing';
-		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-		frame = requestAnimationFrame(tick);
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+		const next = id === draggedId ? null : id;
+		if (targetId !== next) targetId = next;
 	}
 
-	function onPointerMove(event: PointerEvent) {
-		if (!drag || event.pointerId !== drag.pointerId) return;
-		pointerY = event.clientY;
+	function onDrop(event: DragEvent, id: string) {
+		const fromId = draggedId;
+		if (!fromId) return;
+		event.preventDefault();
+		const from = files.findIndex((file) => file.id === fromId);
+		const to = files.findIndex((file) => file.id === id);
+		draggedId = null;
+		targetId = null;
+		if (from >= 0 && to >= 0 && from !== to) onreorder(from, to);
 	}
 
-	function endDrag(event: PointerEvent) {
-		if (!drag || event.pointerId !== drag.pointerId) return;
-		const { from, to } = drag;
-		cancelAnimationFrame(frame);
-		frame = 0;
-		clearStyles();
-		drag = null;
-		dragging = false;
-		document.body.style.userSelect = previousUserSelect;
-		document.body.style.cursor = previousCursor;
-		if (from !== to) onreorder(from, to);
+	function onDragEnd() {
+		draggedId = null;
+		targetId = null;
 	}
-
-	onDestroy(() => {
-		cancelAnimationFrame(frame);
-		if (!drag) return;
-		document.body.style.userSelect = previousUserSelect;
-		document.body.style.cursor = previousCursor;
-		drag = null;
-	});
 </script>
 
-<svelte:window onpointermove={onPointerMove} onpointerup={endDrag} onpointercancel={endDrag} />
-
-<ul
-	bind:this={listEl}
-	class="space-y-2"
-	class:is-dragging={dragging}
-	data-dragging={dragging ? '' : undefined}
->
+<ul id="pm-files">
 	{#each files as file, index (file.id)}
 		<li
-			class="relative flex min-w-0 items-center gap-2 rounded-xl bg-card p-2.5 ring-1 ring-foreground/10 sm:gap-3 sm:p-3"
+			class="filecard"
+			class:drag-active={draggedId === file.id}
+			class:drag-target={targetId === file.id}
+			draggable={canDrag()}
+			data-id={file.id}
+			ondragstart={(event) => onDragStart(event, file.id)}
+			ondragover={(event) => onDragOver(event, file.id)}
+			ondrop={(event) => onDrop(event, file.id)}
+			ondragend={onDragEnd}
 		>
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				type="button"
-				class="cursor-grab touch-none"
-				aria-label="Kéo để đổi thứ tự"
-				disabled={busy || files.length < 2}
-				onpointerdown={(event) => startDrag(event, index)}
-			>
+			<span class="grip" aria-hidden="true">
 				<GripVertical />
-			</Button>
+			</span>
 			<span class="w-4 shrink-0 text-center text-xs font-medium text-muted-foreground tabular-nums"
 				>{index + 1}</span
 			>
@@ -267,8 +173,71 @@
 </ul>
 
 <style>
-	ul.is-dragging li {
-		transition: none;
-		will-change: transform;
+	ul {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.filecard {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		padding: 24px;
+		min-height: 100px;
+		background: var(--card);
+		border: 1px solid var(--border);
+		border-radius: 14px;
+		color: var(--card-foreground);
+		transition:
+			background 180ms ease,
+			border-color 180ms ease,
+			opacity 180ms ease;
+	}
+
+	:global(.dark) .filecard {
+		background: #191c23;
+		border-color: #303541;
+	}
+
+	.filecard:hover {
+		background: color-mix(in oklch, var(--foreground) 4%, var(--card));
+		border-color: color-mix(in oklch, var(--foreground) 22%, var(--border));
+	}
+
+	:global(.dark) .filecard:hover {
+		background: #1e222b;
+		border-color: #48516a;
+	}
+
+	.grip {
+		display: inline-flex;
+		flex: none;
+		color: #687187;
+		cursor: grab;
+	}
+
+	.grip :global(svg) {
+		width: 24px;
+		height: 24px;
+	}
+
+	.grip:active {
+		cursor: grabbing;
+	}
+
+	.filecard.drag-active {
+		opacity: 0.38;
+	}
+
+	.filecard.drag-target {
+		border-color: #6b89ff;
+		box-shadow: 0 0 0 1px #5d81ff;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.filecard {
+			transition: none;
+		}
 	}
 </style>

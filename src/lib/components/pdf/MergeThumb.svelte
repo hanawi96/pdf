@@ -66,6 +66,6 @@
 
 <div bind:this={node} class="relative size-12 shrink-0 overflow-hidden rounded-md bg-muted sm:size-14">
 	{#if url}
-		<img src={url} alt="" class="size-full object-contain" decoding="async" />
+		<img src={url} alt="" class="size-full object-contain" decoding="async" draggable="false" />
 	{/if}
 </div>
